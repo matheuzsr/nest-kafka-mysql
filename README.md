@@ -1,98 +1,315 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🏖️ Vacation Management System
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Sistema de gerenciamento de férias para funcionários, desenvolvido com NestJS, MySQL e Kafka.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 📋 Visão Geral
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+O sistema permite o controle completo do ciclo de férias dos funcionários: desde o cadastro, acúmulo automático mensal de dias, agendamento e acompanhamento do status das férias em tempo real.
 
-## Project setup
+---
 
-```bash
-$ npm install
+## 🚀 Stack Tecnológica
+
+| Camada | Tecnologia |
+|---|---|
+| Framework | NestJS |
+| Banco de Dados | MySQL |
+| Fila de Mensagens | Apache Kafka |
+| Agendamento | NestJS Schedule (cron) |
+| ORM | TypeORM |
+
+---
+
+## 🏗️ Arquitetura de Módulos
+
+```
+src/
+├── employees/          # CRUD de funcionários
+├── vacations/          # Agendamento e acompanhamento de férias
+├── accrual/            # Lógica de acúmulo mensal
+├── kafka/              # Producers e Consumers
+│   ├── producers/
+│   └── consumers/
+├── scheduler/          # Cron jobs
+└── database/           # Configuração MySQL / TypeORM
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## 🗄️ Diagrama do Banco de Dados
 
-# watch mode
-$ npm run start:dev
+```mermaid
+erDiagram
+    employees {
+        int id PK
+        varchar name
+        varchar email
+        varchar cpf
+        varchar department
+        date hire_date
+        decimal available_vacation_days
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
 
-# production mode
-$ npm run start:prod
+    vacation_schedules {
+        int id PK
+        int employee_id FK
+        date start_date
+        date end_date
+        int total_days
+        enum status
+        varchar cancellation_reason
+        datetime created_at
+        datetime updated_at
+    }
+
+    vacation_accrual_logs {
+        int id PK
+        int employee_id FK
+        decimal days_added
+        decimal balance_before
+        decimal balance_after
+        varchar reference_month
+        datetime processed_at
+    }
+
+    vacation_consumption_logs {
+        int id PK
+        int vacation_schedule_id FK
+        int employee_id FK
+        enum action
+        datetime processed_at
+    }
+
+    employees ||--o{ vacation_schedules : "has"
+    employees ||--o{ vacation_accrual_logs : "receives"
+    vacation_schedules ||--o{ vacation_consumption_logs : "generates"
 ```
 
-## Run tests
+> **Enum `status`** em `vacation_schedules`: `scheduled` | `in_progress` | `finalized` | `canceled`
 
-```bash
-# unit tests
-$ npm run test
+> **Enum `action`** em `vacation_consumption_logs`: `started` | `finalized`
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
+## 🔄 Fluxos com Kafka e Cron
+
+### 1. Acúmulo Mensal de Férias
+
+Todo mês, no primeiro dia, o sistema dispara um cron job que publica um evento no Kafka para cada funcionário ativo. O consumer processa a mensagem e adiciona **1.25 dias** ao saldo disponível.
+
+```mermaid
+sequenceDiagram
+    participant Cron as ⏰ CronJob<br/>(1º dia do mês)
+    participant DB1 as 🗄️ MySQL
+    participant Producer as 📤 Kafka Producer
+    participant Topic as 📨 Topic:<br/>vacation.accrual
+    participant Consumer as 📥 Kafka Consumer
+    participant DB2 as 🗄️ MySQL
+
+    Cron->>DB1: Busca todos os funcionários ativos
+    DB1-->>Cron: Lista de funcionários
+
+    loop Para cada funcionário
+        Cron->>Producer: Publica evento de acúmulo
+        Producer->>Topic: { employeeId, daysToAdd: 1.25, referenceMonth }
+    end
+
+    Topic->>Consumer: Consome mensagem
+    Consumer->>DB2: Inicia transação
+    Consumer->>DB2: Registra em vacation_accrual_logs
+    Consumer->>DB2: Atualiza available_vacation_days += 1.25
+    Consumer->>DB2: Commit
+    DB2-->>Consumer: Sucesso
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### 2. Início Automático das Férias (scheduled → in_progress)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Um cron job diário verifica se há férias com `start_date = hoje` e status `scheduled`, publicando eventos para iniciar cada período.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```mermaid
+sequenceDiagram
+    participant Cron as ⏰ CronJob<br/>(diário, meia-noite)
+    participant DB1 as 🗄️ MySQL
+    participant Producer as 📤 Kafka Producer
+    participant Topic as 📨 Topic:<br/>vacation.status-update
+    participant Consumer as 📥 Kafka Consumer
+    participant DB2 as 🗄️ MySQL
+
+    Cron->>DB1: Busca schedules onde<br/>start_date = hoje AND status = 'scheduled'
+    DB1-->>Cron: Lista de férias para iniciar
+
+    loop Para cada agendamento
+        Cron->>Producer: Publica evento de início
+        Producer->>Topic: { vacationId, employeeId, action: 'start' }
+    end
+
+    Topic->>Consumer: Consome mensagem
+    Consumer->>DB2: Atualiza status → 'in_progress'
+    Consumer->>DB2: Registra em vacation_consumption_logs (action: 'started')
+    DB2-->>Consumer: Sucesso
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+### 3. Finalização Automática das Férias (in_progress → finalized)
 
-Check out a few resources that may come in handy when working with NestJS:
+Outro cron job diário verifica se há férias com `end_date = ontem` e status `in_progress`, publicando eventos para finalizá-las.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```mermaid
+sequenceDiagram
+    participant Cron as ⏰ CronJob<br/>(diário, meia-noite)
+    participant DB1 as 🗄️ MySQL
+    participant Producer as 📤 Kafka Producer
+    participant Topic as 📨 Topic:<br/>vacation.status-update
+    participant Consumer as 📥 Kafka Consumer
+    participant DB2 as 🗄️ MySQL
 
-## Support
+    Cron->>DB1: Busca schedules onde<br/>end_date < hoje AND status = 'in_progress'
+    DB1-->>Cron: Lista de férias para finalizar
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+    loop Para cada agendamento
+        Cron->>Producer: Publica evento de finalização
+        Producer->>Topic: { vacationId, employeeId, action: 'finalize' }
+    end
 
-## Stay in touch
+    Topic->>Consumer: Consome mensagem
+    Consumer->>DB2: Atualiza status → 'finalized'
+    Consumer->>DB2: Registra em vacation_consumption_logs (action: 'finalized')
+    DB2-->>Consumer: Sucesso
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
-## License
+### 4. Agendamento de Férias (fluxo síncrono via API)
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```mermaid
+sequenceDiagram
+    participant Client as 🖥️ Client
+    participant API as 🔌 REST API
+    participant DB as 🗄️ MySQL
+
+    Client->>API: POST /vacations/schedule<br/>{ employeeId, startDate, endDate }
+    API->>DB: Busca funcionário e saldo disponível
+    DB-->>API: Employee { available_vacation_days }
+
+    alt Saldo suficiente
+        API->>DB: Cria registro em vacation_schedules (status: 'scheduled')
+        API->>DB: Debita dias do available_vacation_days
+        DB-->>API: Sucesso
+        API-->>Client: 201 Created { vacationId, status: 'scheduled' }
+    else Saldo insuficiente
+        API-->>Client: 422 Unprocessable Entity<br/>{ message: 'Saldo de férias insuficiente' }
+    end
+```
+
+---
+
+## 📡 Tópicos Kafka
+
+| Tópico | Publicado por | Consumido por | Descrição |
+|---|---|---|---|
+| `vacation.accrual` | AccrualCronJob | AccrualConsumer | Acúmulo mensal de 1.25 dias |
+| `vacation.status-update` | StatusCronJob | StatusConsumer | Transições de status (start / finalize) |
+
+---
+
+## 🔌 Endpoints da API
+
+### Funcionários
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/employees` | Lista todos os funcionários |
+| `GET` | `/employees/:id` | Busca funcionário por ID |
+| `POST` | `/employees` | Cria novo funcionário |
+| `PATCH` | `/employees/:id` | Atualiza funcionário |
+| `DELETE` | `/employees/:id` | Remove (soft delete) funcionário |
+
+### Férias
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/vacations/schedule` | Agenda férias |
+| `PATCH` | `/vacations/:id/cancel` | Cancela férias agendadas |
+| `GET` | `/vacations/employee/:id` | Lista histórico de férias do funcionário |
+| `GET` | `/vacations/:id` | Busca detalhe de um agendamento |
+
+---
+
+## ⏰ Cron Jobs
+
+| Job | Expressão Cron | Ação |
+|---|---|---|
+| `AccrualCronJob` | `0 0 1 * *` | Publica acúmulo de 1.25 dias para todos os funcionários ativos no 1º dia de cada mês |
+| `VacationStartCronJob` | `0 0 * * *` | Publica início de férias agendadas para hoje |
+| `VacationEndCronJob` | `0 0 * * *` | Publica finalização de férias cujo período encerrou |
+
+---
+
+## 🛡️ Regras de Negócio
+
+- Funcionário só pode agendar férias se tiver saldo suficiente de dias disponíveis (`total_days <= available_vacation_days`).
+- O cancelamento só é permitido para férias com status `scheduled`. Ao cancelar, os dias são devolvidos ao saldo.
+- Férias com status `in_progress` ou `finalized` não podem ser canceladas.
+- O acúmulo mensal considera apenas funcionários com `is_active = true`.
+- Não é permitido agendar períodos sobrepostos para o mesmo funcionário.
+
+---
+
+## 🚦 Máquina de Estados — Status das Férias
+
+```
+scheduled ──► in_progress ──► finalized
+    │
+    └──► canceled
+```
+
+| Transição | Gatilho |
+|---|---|
+| `scheduled → in_progress` | CronJob diário (data de início atingida) |
+| `in_progress → finalized` | CronJob diário (data de término ultrapassada) |
+| `scheduled → canceled` | Requisição manual via API |
+
+---
+
+## ⚙️ Variáveis de Ambiente
+
+```env
+# Database
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASS=secret
+DB_NAME=vacation_management
+
+# Kafka
+KAFKA_BROKERS=localhost:9092
+KAFKA_CLIENT_ID=vacation-service
+KAFKA_GROUP_ID=vacation-consumer-group
+
+# App
+PORT=3000
+```
+
+---
+
+## 🐳 Como rodar localmente
+
+```bash
+# Subir dependências (MySQL + Kafka + Zookeeper)
+docker-compose up -d
+
+# Instalar dependências
+npm install
+
+# Rodar migrations
+npm run migration:run
+
+# Iniciar aplicação
+npm run start:dev
+```
