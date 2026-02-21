@@ -1,25 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
     {
-      "version": "0.2.0",
-      "configurations": [
-        {
-          "type": "node",
-          "request": "launch",
-          "name": "Debug NestJS Framework",
-          "args": [
-            "${workspaceFolder}/src/main.ts"
-          ],
-          "runtimeArgs": [
-            "--nolazy",
-            "-r",
-            "ts-node/register",
-            "-r",
-            "tsconfig-paths/register"
-          ],
-          "sourceMaps": true,
-          "cwd": "${workspaceFolder}",
-          "protocol": "inspector",
-          "console": "integratedTerminal",
-          "internalConsoleOptions": "neverOpen"
-        }
-      ]
+      "type": "node",
+      "request": "launch",
+      "name": "Debug NestJS",
+      "runtimeExecutable": "/home/matheuzsr/.nvm/versions/node/v22.18.0/bin/npm",
+      "runtimeArgs": ["run", "start:debug"],
+      "sourceMaps": true,
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "restart": true
     }
+  ]
+}
