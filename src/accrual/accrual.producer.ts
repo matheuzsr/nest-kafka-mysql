@@ -10,7 +10,7 @@ export class AccrualProducer implements OnModuleInit {
   private readonly logger = new Logger(AccrualProducer.name);
 
   constructor(
-    @Inject('ORDER_SERVICE')
+    @Inject('KAFKA_SERVICE')
     private readonly kafkaClient: ClientKafka,
   ) {
     /* no-op */

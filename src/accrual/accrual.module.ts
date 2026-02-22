@@ -15,7 +15,7 @@ import { AccrualConsumerController } from './accrual.consumer';
     SequelizeModule.forFeature([Employee, VacationAccrualLog]),
     ClientsModule.register([
       {
-        name: 'ORDER_SERVICE',
+        name: 'KAFKA_SERVICE',
         transport: Transport.KAFKA,
         options: {
           client: {
@@ -41,4 +41,4 @@ import { AccrualConsumerController } from './accrual.consumer';
   controllers: [AccrualConsumerController],
   providers: [AccrualService, AccrualProducer, AccrualCronJob],
 })
-export class AccrualModule {}
+export class AccrualModule { }

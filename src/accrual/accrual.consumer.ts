@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 
 import { AccrualService, AccrualEvent } from './accrual.service';
 import { ACCRUAL_TOPIC } from './accrual.producer';
+import { kafkaDeserialize } from 'src/common/helpers/kafka-deserialize.helper';
 
 @Controller()
 export class AccrualConsumerController {
@@ -12,9 +13,7 @@ export class AccrualConsumerController {
 
   @MessagePattern(ACCRUAL_TOPIC)
   async handleAccrualEvent(@Payload() message: any): Promise<void> {
-    console.log('Received message:', message);
-    const event: AccrualEvent =
-      typeof message === 'string' ? JSON.parse(message) : message;
+    const event= kafkaDeserialize<AccrualEvent>(message);
 
     this.logger.log(
       `Consumed accrual event — employee: ${event.employeeId} | month: ${event.referenceMonth}`,
