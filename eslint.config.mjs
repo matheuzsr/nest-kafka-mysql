@@ -29,6 +29,9 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
+      'object-curly-spacing': 'error',
+      'padded-blocks': ['error', 'never'],
+      '@typescript-eslint/padded-blocks': ['error', 'never'],
     },
   },
 );
