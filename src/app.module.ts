@@ -4,6 +4,7 @@ import sequelizeConfig from './config/database.config';
 import { OrderModule } from './order/order.module';
 import { AccrualModule } from './accrual/accrual.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { VacationModule } from './vacations/vacation.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     SequelizeModule.forRoot(sequelizeConfig),
     OrderModule,
     AccrualModule,
+    VacationModule,
   ],
   // providers: [],
 })
