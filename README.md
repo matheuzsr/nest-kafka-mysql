@@ -281,11 +281,11 @@ scheduled ──► in_progress ──► finalized
 
 ```env
 # Database
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASS=secret
-DB_NAME=vacation_management
+DATABASE_HOST=localhost
+DATABASE_PORT=3306
+DATABASE_USER=root
+DATABASE_PASSWORD=<secret>
+DATABASE_NAME=vacation_management
 
 # Kafka
 KAFKA_BROKERS=localhost:9092

@@ -4,10 +4,10 @@ import 'dotenv/config';
 module.exports = {
   development: {
     dialect: 'mysql',
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT) || 3306,
-    username: process.env.DB_USER || 'root',
-    password: process.env.DB_PASS || 'root',
-    database: process.env.DB_NAME || 'nestdb',
+    host: process.env.DATABASE_HOST || 'localhost',
+    port: Number(process.env.DATABASE_PORT) || 3306,
+    username: process.env.DATABASE_USER || 'root',
+    password: process.env.DATABASE_PASSWORD || 'root',
+    database: process.env.DATABASE_NAME || 'nestdb',
   },
 };
