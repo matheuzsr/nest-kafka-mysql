@@ -1,44 +1,44 @@
 # 🏖️ Vacation Management System
 
-Sistema de gerenciamento de férias para funcionários, desenvolvido com NestJS, MySQL e Kafka.
+Employee vacation management system built with NestJS, MySQL, and Kafka.
 
 ---
 
-## 📋 Visão Geral
+## 📋 Overview
 
-O sistema permite o controle completo do ciclo de férias dos funcionários: desde o cadastro, acúmulo automático mensal de dias, agendamento e acompanhamento do status das férias em tempo real.
+The system enables complete control over the employee vacation lifecycle: from registration, automatic monthly day accrual, scheduling, and real-time status tracking.
 
 ---
 
-## 🚀 Stack Tecnológica
+## 🚀 Tech Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
 | Framework | NestJS |
-| Banco de Dados | MySQL |
-| Fila de Mensagens | Apache Kafka |
-| Agendamento | NestJS Schedule (cron) |
+| Database | MySQL |
+| Message Queue | Apache Kafka |
+| Scheduling | NestJS Schedule (cron) |
 | ORM | TypeORM |
 
 ---
 
-## 🏗️ Arquitetura de Módulos
+## 🏗️ Module Architecture
 
 ```
 src/
-├── employees/          # CRUD de funcionários
-├── vacations/          # Agendamento e acompanhamento de férias
-├── accrual/            # Lógica de acúmulo mensal
-├── kafka/              # Producers e Consumers
+├── employees/          # Employee CRUD
+├── vacations/          # Vacation scheduling and tracking
+├── accrual/            # Monthly accrual logic
+├── kafka/              # Producers and Consumers
 │   ├── producers/
 │   └── consumers/
 ├── scheduler/          # Cron jobs
-└── database/           # Configuração MySQL / TypeORM
+└── database/           # MySQL / TypeORM configuration
 ```
 
 ---
 
-## 🗄️ Diagrama do Banco de Dados
+## 🗄️ Database Diagram
 
 ```mermaid
 erDiagram
@@ -90,104 +90,104 @@ erDiagram
     vacation_schedules ||--o{ vacation_consumption_logs : "generates"
 ```
 
-> **Enum `status`** em `vacation_schedules`: `scheduled` | `in_progress` | `finalized` | `canceled`
+> **Enum `status`** in `vacation_schedules`: `scheduled` | `in_progress` | `finalized` | `canceled`
 
-> **Enum `action`** em `vacation_consumption_logs`: `started` | `finalized`
+> **Enum `action`** in `vacation_consumption_logs`: `started` | `finalized`
 
 ---
 
-## 🔄 Fluxos com Kafka e Cron
+## 🔄 Kafka and Cron Flows
 
-### 1. Acúmulo Mensal de Férias
+### 1. Monthly Vacation Accrual
 
-Todo mês, no primeiro dia, o sistema dispara um cron job que publica um evento no Kafka para cada funcionário ativo. O consumer processa a mensagem e adiciona **1.25 dias** ao saldo disponível.
+On the first day of every month, a cron job fires and publishes a Kafka event for each active employee. The consumer processes the message and adds **1.25 days** to the available balance.
 
 ```mermaid
 sequenceDiagram
-    participant Cron as ⏰ CronJob<br/>(1º dia do mês)
+    participant Cron as ⏰ CronJob<br/>(1st of the month)
     participant DB1 as 🗄️ MySQL
     participant Producer as 📤 Kafka Producer
     participant Topic as 📨 Topic:<br/>vacation.accrual
     participant Consumer as 📥 Kafka Consumer
     participant DB2 as 🗄️ MySQL
 
-    Cron->>DB1: Busca todos os funcionários ativos
-    DB1-->>Cron: Lista de funcionários
+    Cron->>DB1: Fetch all active employees
+    DB1-->>Cron: Employee list
 
-    loop Para cada funcionário
-        Cron->>Producer: Publica evento de acúmulo
+    loop For each employee
+        Cron->>Producer: Publish accrual event
         Producer->>Topic: { employeeId, daysToAdd: 1.25, referenceMonth }
     end
 
-    Topic->>Consumer: Consome mensagem
-    Consumer->>DB2: Inicia transação
-    Consumer->>DB2: Registra em vacation_accrual_logs
-    Consumer->>DB2: Atualiza available_vacation_days += 1.25
+    Topic->>Consumer: Consume message
+    Consumer->>DB2: Begin transaction
+    Consumer->>DB2: Insert into vacation_accrual_logs
+    Consumer->>DB2: Update available_vacation_days += 1.25
     Consumer->>DB2: Commit
-    DB2-->>Consumer: Sucesso
+    DB2-->>Consumer: Success
 ```
 
 ---
 
-### 2. Início Automático das Férias (scheduled → in_progress)
+### 2. Automatic Vacation Start (scheduled → in_progress)
 
-Um cron job diário verifica se há férias com `start_date = hoje` e status `scheduled`, publicando eventos para iniciar cada período.
+A daily cron job checks for vacations with `start_date = today` and status `scheduled`, publishing events to start each period.
 
 ```mermaid
 sequenceDiagram
-    participant Cron as ⏰ CronJob<br/>(diário, meia-noite)
+    participant Cron as ⏰ CronJob<br/>(daily, midnight)
     participant DB1 as 🗄️ MySQL
     participant Producer as 📤 Kafka Producer
     participant Topic as 📨 Topic:<br/>vacation.status-update
     participant Consumer as 📥 Kafka Consumer
     participant DB2 as 🗄️ MySQL
 
-    Cron->>DB1: Busca schedules onde<br/>start_date = hoje AND status = 'scheduled'
-    DB1-->>Cron: Lista de férias para iniciar
+    Cron->>DB1: Fetch schedules where<br/>start_date = today AND status = 'scheduled'
+    DB1-->>Cron: List of vacations to start
 
-    loop Para cada agendamento
-        Cron->>Producer: Publica evento de início
+    loop For each schedule
+        Cron->>Producer: Publish start event
         Producer->>Topic: { vacationId, employeeId, action: 'start' }
     end
 
-    Topic->>Consumer: Consome mensagem
-    Consumer->>DB2: Atualiza status → 'in_progress'
-    Consumer->>DB2: Registra em vacation_consumption_logs (action: 'started')
-    DB2-->>Consumer: Sucesso
+    Topic->>Consumer: Consume message
+    Consumer->>DB2: Update status → 'in_progress'
+    Consumer->>DB2: Insert into vacation_consumption_logs (action: 'started')
+    DB2-->>Consumer: Success
 ```
 
 ---
 
-### 3. Finalização Automática das Férias (in_progress → finalized)
+### 3. Automatic Vacation Finalization (in_progress → finalized)
 
-Outro cron job diário verifica se há férias com `end_date = ontem` e status `in_progress`, publicando eventos para finalizá-las.
+Another daily cron job checks for vacations with `end_date = yesterday` and status `in_progress`, publishing events to finalize them.
 
 ```mermaid
 sequenceDiagram
-    participant Cron as ⏰ CronJob<br/>(diário, meia-noite)
+    participant Cron as ⏰ CronJob<br/>(daily, midnight)
     participant DB1 as 🗄️ MySQL
     participant Producer as 📤 Kafka Producer
     participant Topic as 📨 Topic:<br/>vacation.status-update
     participant Consumer as 📥 Kafka Consumer
     participant DB2 as 🗄️ MySQL
 
-    Cron->>DB1: Busca schedules onde<br/>end_date < hoje AND status = 'in_progress'
-    DB1-->>Cron: Lista de férias para finalizar
+    Cron->>DB1: Fetch schedules where<br/>end_date < today AND status = 'in_progress'
+    DB1-->>Cron: List of vacations to finalize
 
-    loop Para cada agendamento
-        Cron->>Producer: Publica evento de finalização
+    loop For each schedule
+        Cron->>Producer: Publish finalization event
         Producer->>Topic: { vacationId, employeeId, action: 'finalize' }
     end
 
-    Topic->>Consumer: Consome mensagem
-    Consumer->>DB2: Atualiza status → 'finalized'
-    Consumer->>DB2: Registra em vacation_consumption_logs (action: 'finalized')
-    DB2-->>Consumer: Sucesso
+    Topic->>Consumer: Consume message
+    Consumer->>DB2: Update status → 'finalized'
+    Consumer->>DB2: Insert into vacation_consumption_logs (action: 'finalized')
+    DB2-->>Consumer: Success
 ```
 
 ---
 
-### 4. Agendamento de Férias (fluxo síncrono via API)
+### 4. Vacation Scheduling (synchronous flow via API)
 
 ```mermaid
 sequenceDiagram
@@ -196,72 +196,72 @@ sequenceDiagram
     participant DB as 🗄️ MySQL
 
     Client->>API: POST /vacations/schedule<br/>{ employeeId, startDate, endDate }
-    API->>DB: Busca funcionário e saldo disponível
+    API->>DB: Fetch employee and available balance
     DB-->>API: Employee { available_vacation_days }
 
-    alt Saldo suficiente
-        API->>DB: Cria registro em vacation_schedules (status: 'scheduled')
-        API->>DB: Debita dias do available_vacation_days
-        DB-->>API: Sucesso
+    alt Sufficient balance
+        API->>DB: Create record in vacation_schedules (status: 'scheduled')
+        API->>DB: Deduct days from available_vacation_days
+        DB-->>API: Success
         API-->>Client: 201 Created { vacationId, status: 'scheduled' }
-    else Saldo insuficiente
-        API-->>Client: 422 Unprocessable Entity<br/>{ message: 'Saldo de férias insuficiente' }
+    else Insufficient balance
+        API-->>Client: 422 Unprocessable Entity<br/>{ message: 'Insufficient vacation balance' }
     end
 ```
 
 ---
 
-## 📡 Tópicos Kafka
+## 📡 Kafka Topics
 
-| Tópico | Publicado por | Consumido por | Descrição |
+| Topic | Published by | Consumed by | Description |
 |---|---|---|---|
-| `vacation.accrual` | AccrualCronJob | AccrualConsumer | Acúmulo mensal de 1.25 dias |
-| `vacation.status-update` | StatusCronJob | StatusConsumer | Transições de status (start / finalize) |
+| `vacation.accrual` | AccrualCronJob | AccrualConsumer | Monthly accrual of 1.25 days |
+| `vacation.status-update` | StatusCronJob | StatusConsumer | Status transitions (start / finalize) |
 
 ---
 
-## 🔌 Endpoints da API
+## 🔌 API Endpoints
 
-### Funcionários
-| Método | Rota | Descrição |
+### Employees
+| Method | Route | Description |
 |---|---|---|
-| `GET` | `/employees` | Lista todos os funcionários |
-| `GET` | `/employees/:id` | Busca funcionário por ID |
-| `POST` | `/employees` | Cria novo funcionário |
-| `PATCH` | `/employees/:id` | Atualiza funcionário |
-| `DELETE` | `/employees/:id` | Remove (soft delete) funcionário |
+| `GET` | `/employees` | List all employees |
+| `GET` | `/employees/:id` | Get employee by ID |
+| `POST` | `/employees` | Create new employee |
+| `PATCH` | `/employees/:id` | Update employee |
+| `DELETE` | `/employees/:id` | Remove employee (soft delete) |
 
-### Férias
-| Método | Rota | Descrição |
+### Vacations
+| Method | Route | Description |
 |---|---|---|
-| `POST` | `/vacations/schedule` | Agenda férias |
-| `PATCH` | `/vacations/:id/cancel` | Cancela férias agendadas |
-| `GET` | `/vacations/employee/:id` | Lista histórico de férias do funcionário |
-| `GET` | `/vacations/:id` | Busca detalhe de um agendamento |
+| `POST` | `/vacations/schedule` | Schedule vacation |
+| `PATCH` | `/vacations/:id/cancel` | Cancel scheduled vacation |
+| `GET` | `/vacations/employee/:id` | List employee vacation history |
+| `GET` | `/vacations/:id` | Get schedule details |
 
 ---
 
 ## ⏰ Cron Jobs
 
-| Job | Expressão Cron | Ação |
+| Job | Cron Expression | Action |
 |---|---|---|
-| `AccrualCronJob` | `0 0 1 * *` | Publica acúmulo de 1.25 dias para todos os funcionários ativos no 1º dia de cada mês |
-| `VacationStartCronJob` | `0 0 * * *` | Publica início de férias agendadas para hoje |
-| `VacationEndCronJob` | `0 0 * * *` | Publica finalização de férias cujo período encerrou |
+| `AccrualCronJob` | `0 0 1 * *` | Publishes 1.25-day accrual for all active employees on the 1st of each month |
+| `VacationStartCronJob` | `0 0 * * *` | Publishes start event for vacations scheduled for today |
+| `VacationEndCronJob` | `0 0 * * *` | Publishes finalization event for vacations whose period has ended |
 
 ---
 
-## 🛡️ Regras de Negócio
+## 🛡️ Business Rules
 
-- Funcionário só pode agendar férias se tiver saldo suficiente de dias disponíveis (`total_days <= available_vacation_days`).
-- O cancelamento só é permitido para férias com status `scheduled`. Ao cancelar, os dias são devolvidos ao saldo.
-- Férias com status `in_progress` ou `finalized` não podem ser canceladas.
-- O acúmulo mensal considera apenas funcionários com `is_active = true`.
-- Não é permitido agendar períodos sobrepostos para o mesmo funcionário.
+- An employee can only schedule vacation if they have a sufficient available day balance (`total_days <= available_vacation_days`).
+- Cancellation is only allowed for vacations with status `scheduled`. Upon cancellation, the days are returned to the balance.
+- Vacations with status `in_progress` or `finalized` cannot be canceled.
+- Monthly accrual only applies to employees with `is_active = true`.
+- Overlapping periods for the same employee are not allowed.
 
 ---
 
-## 🚦 Máquina de Estados — Status das Férias
+## 🚦 State Machine — Vacation Status
 
 ```
 scheduled ──► in_progress ──► finalized
@@ -269,15 +269,15 @@ scheduled ──► in_progress ──► finalized
     └──► canceled
 ```
 
-| Transição | Gatilho |
+| Transition | Trigger |
 |---|---|
-| `scheduled → in_progress` | CronJob diário (data de início atingida) |
-| `in_progress → finalized` | CronJob diário (data de término ultrapassada) |
-| `scheduled → canceled` | Requisição manual via API |
+| `scheduled → in_progress` | Daily CronJob (start date reached) |
+| `in_progress → finalized` | Daily CronJob (end date passed) |
+| `scheduled → canceled` | Manual request via API |
 
 ---
 
-## ⚙️ Variáveis de Ambiente
+## ⚙️ Environment Variables
 
 ```env
 # Database
@@ -298,18 +298,18 @@ PORT=3000
 
 ---
 
-## 🐳 Como rodar localmente
+## 🐳 Running Locally
 
 ```bash
-# Subir dependências (MySQL + Kafka + Zookeeper)
+# Start dependencies (MySQL + Kafka + Zookeeper)
 docker-compose up -d
 
-# Instalar dependências
+# Install dependencies
 npm install
 
-# Rodar migrations
+# Run migrations
 npm run migration:run
 
-# Iniciar aplicação
+# Start the application
 npm run start:dev
 ```
